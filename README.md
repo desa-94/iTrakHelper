@@ -1,77 +1,72 @@
 # iTrakHelper
 
-Ein Python-Tool zur Automatisierung wiederkehrender Aufgaben im **iTrak** Controller
-(Metafour NetCourier) — dem internen Buchungs- und Verwaltungstool des Mailrooms.
+A Python tool for automating recurring tasks in the **iTrak** controller
+(Metafour NetCourier) — the mailroom's internal booking and management tool.
 
-Das Tool loggt sich per `requests` in iTrak ein und liest Daten direkt über die
-JSON-Endpunkte aus, ohne Browser.
+The tool logs into iTrak using `requests` and reads data directly from the
+JSON endpoints, without a browser.
 
 ## Features
 
-- **Carrier-Zählung (`-cc`)** — zählt für den heutigen Tag die Anzahl der *Pieces*
-  pro Carrier und gibt eine Übersicht mit Gesamtsumme aus.
+- **Carrier count (`-cc`)** — counts the number of *pieces* per carrier for
+  the current day and prints an overview with a total.
 
-> Weitere Features (z.B. Booking-Automatisierung mit Outlook-Anbindung) sind in
-> Arbeit und leben in eigenen Feature-Branches.
+> Additional features (e.g. booking automation with Outlook integration) are
+> in progress and live in their own feature branches.
 
-## Voraussetzungen
+## Requirements
 
-- Python 3.10 oder neuer
-- Zugang zu einer iTrak-Instanz (Zugangsdaten)
+- Python 3.10 or newer
+- Access to an iTrak instance (credentials)
 
 ## Installation
 
 ```bash
-# Repository klonen
+# Clone the repository
 git clone https://github.com/desa-94/iTrakHelper.git
 cd iTrakHelper
 
-# Virtuelle Umgebung anlegen und aktivieren (Windows)
+# Create and activate a virtual environment (Windows)
 python -m venv venv
 venv\Scripts\activate
 
-# Abhängigkeiten installieren
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-## Konfiguration
+## Configuration
 
-Die Zugangsdaten werden über eine `.env`-Datei geladen (wird von git ignoriert).
+Credentials are loaded from a `.env` file (ignored by git).
 
-1. Kopiere die Vorlage:
+1. Copy the template:
    ```bash
    copy .env.example .env
    ```
-2. Trage in `.env` deine echten Werte ein:
+2. Fill in your real values in `.env`:
    ```
-   iTrak_CONTROLLER_URL=https://<dein-itrak-host>/online/inbound/controller
-   iTrak_ACCESS_CODE=dein_access_code
-   iTrak_USERNAME=dein_username
+   iTrak_CONTROLLER_URL=https://<your-itrak-host>/online/inbound/controller
+   iTrak_ACCESS_CODE=your_access_code
+   iTrak_USERNAME=your_username
    iTrak_PASSWORD=[REDACTED_PASSWORD]
    ```
 
-## Verwendung
+## Usage
 
 ```bash
-# Pieces pro Carrier für heute zählen
+# Count pieces per carrier for today
 py main.py -cc
 
-# Hilfe anzeigen
+# Show help
 py main.py -h
 ```
 
-## Projektstruktur
+## Project structure
 
 ```
 iTrakHelper/
-├── main.py            # CLI-Einstiegspunkt, Login und Kommandos
-├── filter_helper.py   # Parsen der Controller-Filter und Bauen des Payloads
-├── requirements.txt   # Python-Abhängigkeiten
-├── .env.example       # Vorlage für die Konfiguration
+├── main.py            # CLI entry point, login and commands
+├── filter_helper.py   # Parses the controller filters and builds the payload
+├── requirements.txt   # Python dependencies
+├── .env.example       # Configuration template
 └── .gitignore
 ```
-
-## Sicherheit
-
-- Die `.env` mit deinen echten Zugangsdaten wird **nie** committet (steht in `.gitignore`).
-- Teile deine `.env` nicht und lade sie nicht hoch — nur die `.env.example` gehört ins Repo.
