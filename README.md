@@ -1,5 +1,7 @@
 # iTrakHelper
 
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
+
 A Python tool for automating recurring tasks in the **iTrak** controller
 (Metafour NetCourier) — the mailroom's internal booking and management tool.
 
@@ -83,6 +85,44 @@ py main.py -h
 
 On Windows you can also double-click `count_carrier.bat`, which activates the
 virtual environment and runs `py main.py -cc` for you.
+
+### Example output
+
+```
+==============================
+Pieces pro Carrier (heute)
+==============================
+Amazon ..................... 14
+UPS ........................ 32
+DHL ......................... 6
+DHL Express ................ 38
+GLS ......................... 1
+FedEx ....................... 2
+DPD ........................ 14
+Hermes ...................... 1
+Deutsche Post .............. 30
+Sonstiges ................... 2
+------------------------------
+GESAMT .................... 140
+==============================
+Einschreiben ............... 12
+==============================
+```
+
+(Numbers are illustrative.)
+
+## Troubleshooting
+
+- **`Login fehlgeschlagen`** — the credentials in `.env` are wrong or
+  incomplete. Double-check `iTrak_ACCESS_CODE`, `iTrak_USERNAME` and
+  `iTrak_PASSWORD`.
+- **`Konfiguration unvollständig`** — no `.env` file was found, or a value is
+  missing. Copy `.env.example` to `.env` and fill in all fields.
+- **`ModuleNotFoundError`** — the virtual environment is not active. Run
+  `venv\Scripts\activate` first, then `pip install -r requirements.txt`.
+- **Wrong or inflated counts** — only the MUC21 location is counted. If your
+  site differs, adjust `LOCATION_FILTER` at the top of the commands section in
+  `main.py`.
 
 ## Project structure
 
