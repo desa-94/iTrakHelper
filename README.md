@@ -4,15 +4,36 @@ A Python tool for automating recurring tasks in the **iTrak** controller
 (Metafour NetCourier) — the mailroom's internal booking and management tool.
 
 The tool logs into iTrak using `requests` and reads data directly from the
-JSON endpoints, without a browser.
+JSON endpoints, without a browser. It supports the daily volume reporting that
+would otherwise be copied by hand.
+
+## Background — why this exists
+
+Every evening the mailroom fills in a volume report (*Mengenreporting*): how
+many parcels and letters arrived that day, broken down by carrier. These
+numbers end up on a sheet that gets archived and in a SharePoint file.
+
+The old way had several manual steps:
+
+1. Wait until the colleague from the loading bay arrived in the evening.
+2. Receive a hand-written note with their counts.
+3. Copy those numbers onto our own sheet (which is archived).
+4. Only then type everything into the digital report.
+
+iTrakHelper replaces all of that: the numbers come straight from the system we
+book parcels and letters into, so they are **exactly what actually arrived —
+no more, no less**. One click, read the numbers off the screen, write them on
+the sheet and into the report. The loading bay no longer needs to collect them
+by hand, and there is no more waiting for a note to be handed over.
 
 ## Features
 
-- **Carrier count (`-cc`)** — counts the number of *pieces* per carrier for
-  the current day and prints an overview with a total.
-
-> Additional features (e.g. booking automation with Outlook integration) are
-> in progress and live in their own feature branches.
+- **Carrier count (`-cc`)** — counts the number of *pieces* per carrier for the
+  current day and prints an overview grouped into fixed carrier buckets
+  (Amazon, UPS, DHL, DHL Express, GLS, FedEx, DPD, Hermes, Deutsche Post,
+  Sonstiges) with a total.
+  - Registered mail (*Einschreiben*) is counted **separately** via its own
+    collection location and is **not** added to the package total.
 
 ## Requirements
 
@@ -60,12 +81,16 @@ py main.py -cc
 py main.py -h
 ```
 
+On Windows you can also double-click `count_carrier.bat`, which activates the
+virtual environment and runs `py main.py -cc` for you.
+
 ## Project structure
 
 ```
 iTrakHelper/
 ├── main.py            # CLI entry point, login and commands
 ├── filter_helper.py   # Parses the controller filters and builds the payload
+├── count_carrier.bat  # Windows one-click launcher for -cc
 ├── requirements.txt   # Python dependencies
 ├── .env.example       # Configuration template
 └── .gitignore

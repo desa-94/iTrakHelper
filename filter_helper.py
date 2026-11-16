@@ -1,33 +1,16 @@
 from bs4 import BeautifulSoup as bs
 
 # HTML-Feld-Name → Payload-Feld-Name
+# Nur die Felder, die der Carrier-Zähl-Workflow tatsächlich nutzt.
 FILTER_FIELD_MAP = {
     # Datum
     "filterdateperiod": "filters.period",
     "fromDate": "filters.fromDate",
     "toDate": "filters.toDate",
-    # Text-Felder
-    "internalJobNumber": "filters.internalJobNumber",
-    "carrierJobNumber": "filters.carrierJobNumber",
-    "floor": "filters.floor",
-    "department": "filters.department",
-    "desk": "filters.desk",
-    "secondReference": "filters.secondReference",
-    # Single-Selects
+    # Carrier (Single-Select)
     "carrierCompanyId": "filters.carrierCompanyId",
-    "serviceId": "filters.serviceId",
-    "jobCategoryId": "filters.jobCategoryId",
-    # Multi-Selects
+    # Collection-Location (Multi-Select)
     "collectionLocationId": "filters.collectionLocationId[]",
-    "deliveryLocationId": "filters.deliveryLocationId",
-    # Hidden-Felder (von Typeahead/Autocomplete befüllt)
-    "recipientId": "filters.recipientId",
-    "senderId": "filters.senderId",
-    "assignedToId": "filters.assignedToId",
-    "bookedById": "filters.bookedById",
-    # Button-Groups
-    "recordType": "filters.recordType",
-    "recordStatus": "filters.recordStatus",
 }
 
 # Felder ohne filters.-Prefix
@@ -37,34 +20,16 @@ EXTRA_FIELDS = {
     "recordsPerPage": "recordsPerPage",
 }
 
-# Felder die <select> Elemente sind (single oder multi)
+# <select>-Felder (single oder multi)
 SELECT_FIELDS = {
     "filterdateperiod",
     "carrierCompanyId",
-    "serviceId",
-    "jobCategoryId",
     "collectionLocationId",
-    "deliveryLocationId",
 }
 
-# Felder die <select multiple> sind
+# <select multiple>-Felder
 MULTI_SELECT_FIELDS = {
     "collectionLocationId",
-    "deliveryLocationId",
-}
-
-# Felder deren Wert aus einem Hidden-Input kommt (Typeahead)
-HIDDEN_FIELDS = {
-    "recipientId",
-    "senderId",
-    "assignedToId",
-    "bookedById",
-}
-
-# Button-Group Felder (Wert kommt von button.selected)
-BUTTON_GROUP_FIELDS = {
-    "recordType",
-    "recordStatus",
 }
 
 
@@ -74,7 +39,7 @@ class FilterHelper:
     def __init__(self, html: str):
         """
         Nimmt das HTML der Controller-Seite nach dem Login entgegen.
-        Parsed alle Filter-Felder und speichert deren aktuelle Werte.
+        Parsed alle genutzten Filter-Felder und speichert deren aktuelle Werte.
         """
         self.soup = bs(html, "html.parser")
         self.filters = {}  # field_name → aktueller Wert (str oder list)
@@ -83,20 +48,11 @@ class FilterHelper:
 
     def _parse_all_fields(self):
         """Parsed alle bekannten Felder aus dem HTML und speichert die Defaults."""
-
         for field_name in FILTER_FIELD_MAP:
-            if field_name in BUTTON_GROUP_FIELDS:
-                self.filters[field_name] = self._parse_button_group(field_name)
-
-            elif field_name in MULTI_SELECT_FIELDS:
+            if field_name in MULTI_SELECT_FIELDS:
                 self.filters[field_name] = self._parse_multi_select(field_name)
-
             elif field_name in SELECT_FIELDS:
                 self.filters[field_name] = self._parse_select(field_name)
-
-            elif field_name in HIDDEN_FIELDS:
-                self.filters[field_name] = self._parse_hidden(field_name)
-
             else:
                 self.filters[field_name] = self._parse_text_input(field_name)
 
@@ -123,7 +79,7 @@ class FilterHelper:
         return selected_option["value"] if selected_option else ""
 
     def _parse_multi_select(self, field_name: str) -> list:
-        """Parsed ein <select multiple> und gibt alle ausgewählten Werte als Liste zurück."""
+        """Parsed ein <select multiple> und gibt alle ausgewählten Werte zurück."""
         select = self.soup.find("select", {"id": field_name})
         if not select:
             select = self.soup.find("select", {"name": field_name})
@@ -139,22 +95,6 @@ class FilterHelper:
         if not inp:
             inp = self.soup.find("input", {"name": field_name})
         return inp.get("value", "") if inp else ""
-
-    def _parse_hidden(self, field_name: str) -> str:
-        """Parsed ein <input type='hidden'> und gibt den Wert zurück."""
-        inp = self.soup.find("input", {"id": field_name})
-        if not inp:
-            inp = self.soup.find("input", {"name": field_name})
-        return inp.get("value", "") if inp else ""
-
-    def _parse_button_group(self, field_name: str) -> str:
-        """Parsed eine Button-Group und gibt den Wert des 'selected' Buttons zurück."""
-        group = self.soup.find("div", {"id": field_name})
-        if not group:
-            return ""
-
-        selected_btn = group.find("button", class_="selected")
-        return selected_btn.get("data-value", "") if selected_btn else ""
 
     def get_options(self, field_name: str) -> list[dict]:
         """
@@ -184,14 +124,16 @@ class FilterHelper:
         if field_name not in FILTER_FIELD_MAP and field_name not in EXTRA_FIELDS:
             raise ValueError(
                 f"Unbekanntes Feld: '{field_name}'. "
-                f"Gültige Felder: {list(FILTER_FIELD_MAP.keys()) + list(EXTRA_FIELDS.keys())}"
+                f"Gültige Felder: "
+                f"{list(FILTER_FIELD_MAP.keys()) + list(EXTRA_FIELDS.keys())}"
             )
         self.filters[field_name] = value
 
     def build_payload(self) -> dict:
         """
         Baut den Payload für den POST an /listdata.
-        Gibt ein Dict zurück, das direkt an session.post(data=...) übergeben werden kann.
+        Gibt ein Dict zurück, das direkt an session.post(data=...) übergeben
+        werden kann.
         """
         payload = {}
 

@@ -58,6 +58,7 @@ def fetch_jobs(
     csrf: str,
     fh: FilterHelper,
     carrier_id: str = "",
+    collection_location_ids: list | None = None,
 ) -> dict:
     """Holt die Jobs von heute für einen Carrier vom /listdata Endpoint."""
     today_str = datetime.now().strftime("%a, %d-%b-%Y")
@@ -66,6 +67,10 @@ def fetch_jobs(
     fh.set_filter("fromDate", today_str)
     fh.set_filter("toDate", today_str)
     fh.set_filter("carrierCompanyId", carrier_id)
+    # Optional nur bestimmte Collection-Locations abfragen
+    # (z.B. um Einschreiben ein- oder auszuschließen).
+    if collection_location_ids is not None:
+        fh.set_filter("collectionLocationId", collection_location_ids)
 
     headers = {
         "X-CSRF-TOKEN": csrf,
@@ -131,28 +136,69 @@ def classify_carrier(label: str) -> str:
     return "Sonstiges"
 
 
+# Standort, dessen Mengen gezählt werden sollen (Label-Teilstring, klein).
+# Nur dieser Standort fließt in die Zählung ein — andere (Berlin, MUC14,
+# Amazon DE, ...) werden bewusst ignoriert.
+LOCATION_FILTER = "muc21"
+
+
+def split_locations(fh: FilterHelper) -> tuple[list, list]:
+    """Teilt die relevanten Collection-Locations in (normal, einschreiben) auf.
+
+    Es werden NUR Standorte berücksichtigt, deren Label LOCATION_FILTER enthält
+    (also MUC21). Davon gilt alles mit 'Einschreiben' im Label als Einschreiben,
+    der Rest (das normale MUC21) als Pakete. Alle anderen Standorte werden
+    ignoriert, damit keine fremden Mengen mitgezählt werden.
+    """
+    normal_ids = []
+    einschreiben_ids = []
+    for loc in fh.get_options("collectionLocationId"):
+        label = loc["label"].lower()
+        if LOCATION_FILTER not in label:
+            continue  # fremder Standort -> ignorieren
+        if "einschreiben" in label:
+            einschreiben_ids.append(loc["value"])
+        else:
+            normal_ids.append(loc["value"])
+    return normal_ids, einschreiben_ids
+
+
+def count_pieces(data: dict) -> int:
+    """Summiert das Feld 'pieces' über alle Jobs einer /listdata-Antwort."""
+    total = 0
+    for job in data.get("jobs", []):
+        try:
+            total += int(job.get("pieces", 0))
+        except (ValueError, TypeError):
+            pass
+    return total
+
+
 def cmd_count_carrier(
     session: requests.Session, controller_url: str, csrf: str, fh: FilterHelper
 ) -> None:
     """Zählt die Pieces pro Carrier für heute."""
     carriers = fh.get_options("carrierCompanyId")
+    normal_ids, einschreiben_ids = split_locations(fh)
 
     # Pieces je Gruppe sammeln (alle Gruppen starten bei 0)
     group_pieces = {group: 0 for group in CARRIER_GROUP_ORDER}
 
+    # Carrier-Zählung NUR auf den normalen Locations — Einschreiben fließen
+    # hier NICHT ein (werden separat ausgewiesen).
     for carrier in carriers:
-        data = fetch_jobs(session, controller_url, csrf, fh, carrier["value"])
-
-        jobs = data.get("jobs", [])
-        carrier_pieces = 0
-        for job in jobs:
-            try:
-                carrier_pieces += int(job.get("pieces", 0))
-            except (ValueError, TypeError):
-                pass
-
+        data = fetch_jobs(
+            session, controller_url, csrf, fh, carrier["value"], normal_ids
+        )
+        carrier_pieces = count_pieces(data)
         group = classify_carrier(carrier["label"])
         group_pieces[group] += carrier_pieces
+
+    # Einschreiben separat zählen (eigene Location, NICHT zur Paketsumme addiert).
+    einschreiben_pieces = 0
+    if einschreiben_ids:
+        data = fetch_jobs(session, controller_url, csrf, fh, "", einschreiben_ids)
+        einschreiben_pieces = count_pieces(data)
 
     # Ausgabe in fester Reihenfolge (wie auf dem Zettel)
     width = 30
@@ -169,6 +215,69 @@ def cmd_count_carrier(
     dots = "." * (width - len("GESAMT") - len(total) - 1)
     print(f"GESAMT {dots} {total}")
     print("=" * width)
+    # Einschreiben als separate Info — bewusst NICHT in der Paketsumme.
+    es = str(einschreiben_pieces)
+    dots = "." * (width - len("Einschreiben") - len(es) - 1)
+    print(f"Einschreiben {dots} {es}")
+    print("=" * width)
+
+
+
+def cmd_debug_jobs(
+    session: requests.Session, controller_url: str, csrf: str, fh: FilterHelper
+) -> None:
+    """Diagnose: zeigt genau, welche Jobs gezaehlt werden.
+
+    Dumpt das erste Job-Objekt roh (um die echten Feldnamen zu sehen) und
+    bricht die Pieces pro Collection-Location herunter, damit sichtbar wird,
+    ob fremde Standorte (z.B. Berlin/MUC14) mitgezaehlt werden.
+    """
+    import json
+
+    normal_ids, einschreiben_ids = split_locations(fh)
+    all_locs = fh.get_options("collectionLocationId")
+    print("=== Collection-Locations im Dropdown ===")
+    for loc in all_locs:
+        print(f"  {loc['value']:<12} {loc['label']}")
+    print()
+    print("Als NORMAL eingestuft:", normal_ids)
+    print("Als EINSCHREIBEN eingestuft:", einschreiben_ids)
+    print()
+
+    # Ein Request ueber ALLE Carrier auf den 'normalen' Locations
+    data = fetch_jobs(session, controller_url, csrf, fh, "", normal_ids)
+    jobs = data.get("jobs", [])
+    print(f"Top-Level-Keys der Antwort: {list(data.keys())}")
+    print(f"Jobs zurueckgegeben: {len(jobs)}")
+    print()
+
+    if jobs:
+        print("=== Erstes Job-Objekt (roh) ===")
+        print(json.dumps(jobs[0], indent=2, ensure_ascii=False, default=str))
+        print()
+
+    per_location = {}
+    total = 0
+    print("=== Job-Uebersicht ===")
+    for job in jobs:
+        jobno = job.get("internalJobNumber", "?")
+        carrier = job.get("carrierCompany", "?")
+        loc = job.get("collectFrom", job.get("collectionLocation", "?"))
+        pieces = job.get("pieces", 0)
+        try:
+            p = int(pieces)
+        except (ValueError, TypeError):
+            p = 0
+        total += p
+        per_location[str(loc)] = per_location.get(str(loc), 0) + p
+        print(f"  {str(jobno):<12} {str(carrier):<18} "
+              f"loc={str(loc):<28} pieces={pieces}")
+
+    print()
+    print("=== Pieces pro Collection-Location (so wie im Job-Feld) ===")
+    for loc, pcs in sorted(per_location.items()):
+        print(f"  {loc:<35} {pcs}")
+    print(f"\nGESAMT pieces (normale Locations, alle Carrier): {total}")
 
 
 # === CLI ===
@@ -183,6 +292,12 @@ def parse_args() -> argparse.Namespace:
         "--count_carrier",
         action="store_true",
         help="Zählt die Pieces pro Carrier für heute",
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Diagnose-Ausgabe: zeigt welche Jobs/Locations gezählt werden",
     )
     return parser.parse_args()
 
@@ -211,7 +326,9 @@ def main() -> None:
     fh = FilterHelper(controller_html)
     print("Login erfolgreich!\n")
 
-    if args.count_carrier:
+    if args.debug:
+        cmd_debug_jobs(session, controller_url, csrf, fh)
+    elif args.count_carrier:
         cmd_count_carrier(session, controller_url, csrf, fh)
 
 
